@@ -1,3 +1,4 @@
+import json
 import logging
 import queue
 import threading
@@ -9,6 +10,7 @@ import mss
 
 from agent.agent import AgentState, GameAgent
 from agent.config import AgentConfig
+from agent.ollama_client import OllamaClient
 
 
 @dataclass(frozen=True)
@@ -106,6 +108,10 @@ class AgentUI:
         self.start_button.pack(side=tk.LEFT)
         self.stop_button = ttk.Button(button_frame, text="Stop", command=self.stop_agent, state=tk.DISABLED)
         self.stop_button.pack(side=tk.LEFT, padx=8)
+        self.copy_button = ttk.Button(button_frame, text="Copy JSON", command=self.copy_params_json)
+        self.copy_button.pack(side=tk.LEFT, padx=8)
+        self.paste_button = ttk.Button(button_frame, text="Paste JSON", command=self.paste_params_json)
+        self.paste_button.pack(side=tk.LEFT)
 
         self.log_text = tk.Text(self.root, height=20, state=tk.DISABLED)
         self.log_text.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
@@ -134,12 +140,78 @@ class AgentUI:
             context=self.context_entry.get().strip(),
             rules=self.rules_entry.get().strip(),
         )
+        ollama_ok, ollama_message = OllamaClient(config.ollama_url).check_connection(config.model)
+        if ollama_ok:
+            self.logger.info(ollama_message)
+        else:
+            self.logger.warning(ollama_message)
         agent = GameAgent(config, state, stop_event=self.stop_event, logger=self.logger)
         self.agent_thread = threading.Thread(target=agent.run, daemon=True)
         self.agent_thread.start()
         self.logger.info("Agent started")
         self.start_button.config(state=tk.DISABLED)
         self.stop_button.config(state=tk.NORMAL)
+
+    def _collect_params(self) -> dict[str, object]:
+        return {
+            "monitor_index": self._selected_monitor_index(),
+            "monitor_label": self.monitor_var.get(),
+            "model": self.model_entry.get().strip(),
+            "task": self.task_entry.get().strip(),
+            "context": self.context_entry.get().strip(),
+            "rules": self.rules_entry.get().strip(),
+            "dry_run": self.dry_run_var.get(),
+        }
+
+    def _apply_params(self, payload: dict[str, object]) -> None:
+        if "model" in payload:
+            self.model_entry.delete(0, tk.END)
+            self.model_entry.insert(0, str(payload["model"]))
+        if "task" in payload:
+            self.task_entry.delete(0, tk.END)
+            self.task_entry.insert(0, str(payload["task"]))
+        if "context" in payload:
+            self.context_entry.delete(0, tk.END)
+            self.context_entry.insert(0, str(payload["context"]))
+        if "rules" in payload:
+            self.rules_entry.delete(0, tk.END)
+            self.rules_entry.insert(0, str(payload["rules"]))
+        if "dry_run" in payload:
+            self.dry_run_var.set(bool(payload["dry_run"]))
+        monitor_label = payload.get("monitor_label")
+        monitor_index = payload.get("monitor_index")
+        if monitor_label:
+            self.monitor_var.set(str(monitor_label))
+        elif monitor_index is not None:
+            matched = next((opt.label for opt in self.monitor_options if opt.index == int(monitor_index)), None)
+            if matched:
+                self.monitor_var.set(matched)
+            else:
+                self.logger.warning("Monitor index %s not found in available monitors", monitor_index)
+
+    def copy_params_json(self) -> None:
+        payload = self._collect_params()
+        encoded = json.dumps(payload, ensure_ascii=False, indent=2)
+        self.root.clipboard_clear()
+        self.root.clipboard_append(encoded)
+        self.logger.info("Parameters copied to clipboard as JSON")
+
+    def paste_params_json(self) -> None:
+        try:
+            raw = self.root.clipboard_get()
+        except tk.TclError as exc:
+            self.logger.warning("Clipboard is empty or unavailable: %s", exc)
+            return
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            self.logger.warning("Clipboard JSON is invalid: %s", exc)
+            return
+        if not isinstance(payload, dict):
+            self.logger.warning("Clipboard JSON must be an object")
+            return
+        self._apply_params(payload)
+        self.logger.info("Parameters loaded from clipboard JSON")
 
     def stop_agent(self) -> None:
         self.stop_event.set()
