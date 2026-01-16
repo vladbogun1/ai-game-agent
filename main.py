@@ -15,7 +15,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--monitor", type=int, default=1)
     parser.add_argument("--width", type=int, default=640)
     parser.add_argument("--height", type=int, default=360)
+    parser.add_argument("--image-quality", type=int, default=80)
+    parser.add_argument("--max-image-side", type=int, default=960)
     parser.add_argument("--delay", type=float, default=0.2)
+    parser.add_argument("--save-debug-frames", action="store_true")
+    parser.add_argument("--debug-frame-interval", type=float, default=5.0)
     return parser.parse_args()
 
 
@@ -27,8 +31,12 @@ def main() -> None:
         screen_monitor=args.monitor,
         capture_width=args.width,
         capture_height=args.height,
+        image_jpeg_quality=args.image_quality,
+        max_image_side=args.max_image_side,
         loop_delay_s=args.delay,
         dry_run=args.dry_run,
+        save_debug_frames=args.save_debug_frames,
+        debug_frame_interval_s=args.debug_frame_interval,
     )
     state = AgentState(task=args.task, context=args.context, rules=args.rules)
     agent = GameAgent(config, state)
