@@ -1,4 +1,5 @@
 import os
+import threading
 import time
 from dataclasses import dataclass
 from typing import Tuple
@@ -35,12 +36,13 @@ class VisionAnalyzer:
         self.save_debug_frames = save_debug_frames
         self.debug_frame_interval_s = debug_frame_interval_s
         self.debug_dir = debug_dir
-        self._sct = mss.mss()
+        self._sct_local = threading.local()
         self._last_debug_ts: float = 0.0
 
     def capture(self) -> Image.Image:
-        monitor = self._sct.monitors[self.monitor_index]
-        screenshot = self._sct.grab(monitor)
+        sct = self._get_sct()
+        monitor = sct.monitors[self.monitor_index]
+        screenshot = sct.grab(monitor)
         image = Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
         resized = image.resize(self.target_size)
         self._maybe_save_debug(resized)
@@ -52,13 +54,21 @@ class VisionAnalyzer:
         return FrameSummary(width=image.width, height=image.height, mean_rgb=mean)
 
     def monitor_region(self) -> dict[str, int]:
-        monitor = self._sct.monitors[self.monitor_index]
+        sct = self._get_sct()
+        monitor = sct.monitors[self.monitor_index]
         return {
             "left": int(monitor["left"]),
             "top": int(monitor["top"]),
             "width": int(monitor["width"]),
             "height": int(monitor["height"]),
         }
+
+    def _get_sct(self) -> mss.mss:
+        sct = getattr(self._sct_local, "instance", None)
+        if sct is None:
+            sct = mss.mss()
+            self._sct_local.instance = sct
+        return sct
 
     def _maybe_save_debug(self, image: Image.Image) -> None:
         if not self.save_debug_frames:
