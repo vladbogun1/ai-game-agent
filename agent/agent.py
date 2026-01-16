@@ -1,5 +1,7 @@
+import logging
 import time
 from dataclasses import dataclass
+from threading import Event
 
 from agent.actions import Action, ActionExecutor
 from agent.config import AgentConfig
@@ -15,7 +17,13 @@ class AgentState:
 
 
 class GameAgent:
-    def __init__(self, config: AgentConfig, state: AgentState) -> None:
+    def __init__(
+        self,
+        config: AgentConfig,
+        state: AgentState,
+        stop_event: Event | None = None,
+        logger: logging.Logger | None = None,
+    ) -> None:
         self.config = config
         self.state = state
         self.vision = VisionAnalyzer(
@@ -23,7 +31,9 @@ class GameAgent:
             target_size=(config.capture_width, config.capture_height),
         )
         self.ollama = OllamaClient(config.ollama_url)
-        self.executor = ActionExecutor(dry_run=config.dry_run)
+        self.logger = logger or logging.getLogger(__name__)
+        self.executor = ActionExecutor(dry_run=config.dry_run, logger=self.logger)
+        self.stop_event = stop_event or Event()
 
     def build_prompt(self, frame_summary: str) -> str:
         return (
@@ -63,7 +73,7 @@ class GameAgent:
         return actions
 
     def run(self) -> None:
-        while True:
+        while not self.stop_event.is_set():
             image = self.vision.capture()
             summary = self.vision.summarize(image)
             prompt = self.build_prompt(summary.to_prompt())

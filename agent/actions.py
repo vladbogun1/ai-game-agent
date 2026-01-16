@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -15,15 +16,16 @@ class Action:
 
 
 class ActionExecutor:
-    def __init__(self, dry_run: bool = True) -> None:
+    def __init__(self, dry_run: bool = True, logger: logging.Logger | None = None) -> None:
         self.dry_run = dry_run
+        self.logger = logger or logging.getLogger(__name__)
         self._mouse = MouseController()
         self._keyboard = KeyboardController()
 
     def execute(self, actions: Iterable[Action]) -> None:
         for action in actions:
             if self.dry_run:
-                print(f"[DRY RUN] {action}")
+                self.logger.info("DRY RUN action: %s", action)
                 continue
             if action.type == "move_mouse" and action.x is not None and action.y is not None:
                 self._mouse.position = (action.x, action.y)
