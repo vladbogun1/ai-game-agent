@@ -140,7 +140,9 @@ class AgentUI:
             context=self.context_entry.get().strip(),
             rules=self.rules_entry.get().strip(),
         )
-        ollama_ok, ollama_message = OllamaClient(config.ollama_url).check_connection(config.model)
+        ollama_ok, ollama_message = OllamaClient(config.ollama_url, logger=self.logger).check_connection(
+            config.model
+        )
         if ollama_ok:
             self.logger.info(ollama_message)
         else:

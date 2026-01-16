@@ -30,8 +30,8 @@ class GameAgent:
             monitor_index=config.screen_monitor,
             target_size=(config.capture_width, config.capture_height),
         )
-        self.ollama = OllamaClient(config.ollama_url)
         self.logger = logger or logging.getLogger(__name__)
+        self.ollama = OllamaClient(config.ollama_url, logger=self.logger)
         self.executor = ActionExecutor(dry_run=config.dry_run, logger=self.logger)
         self.stop_event = stop_event or Event()
 

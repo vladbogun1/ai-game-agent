@@ -1,4 +1,5 @@
 import json
+import logging
 from dataclasses import dataclass
 
 import requests
@@ -14,8 +15,9 @@ class OllamaResponse:
 
 
 class OllamaClient:
-    def __init__(self, base_url: str) -> None:
+    def __init__(self, base_url: str, logger: logging.Logger | None = None) -> None:
         self.base_url = base_url.rstrip("/")
+        self.logger = logger or logging.getLogger(__name__)
 
     def check_connection(self, model: str | None = None) -> tuple[bool, str]:
         try:
@@ -38,6 +40,7 @@ class OllamaClient:
             "prompt": prompt,
             "stream": False,
         }
+        self.logger.info("Ollama request: model=%s prompt=%s", model, prompt)
         response = requests.post(
             f"{self.base_url}/api/generate",
             data=json.dumps(payload),
@@ -45,4 +48,6 @@ class OllamaClient:
             timeout=60,
         )
         response.raise_for_status()
-        return OllamaResponse(response.json())
+        result = response.json()
+        self.logger.info("Ollama response: %s", result)
+        return OllamaResponse(result)
