@@ -1,8 +1,11 @@
+import base64
+import io
 import json
 import logging
 from dataclasses import dataclass
 
 import requests
+from PIL import Image
 
 
 @dataclass(frozen=True)
@@ -34,20 +37,58 @@ class OllamaClient:
             return True, f"Ollama reachable, model '{model}' available"
         return False, f"Ollama reachable, but model '{model}' not found"
 
-    def generate(self, model: str, prompt: str) -> OllamaResponse:
+    def generate(
+        self,
+        model: str,
+        prompt: str,
+        image: Image.Image | None = None,
+        image_quality: int = 80,
+        max_image_side: int | None = None,
+    ) -> OllamaResponse:
         payload = {
             "model": model,
             "prompt": prompt,
             "stream": False,
         }
-        self.logger.info("Ollama request: model=%s prompt=%s", model, prompt)
+        if image is not None:
+            encoded, size = self._encode_image(image, image_quality, max_image_side)
+            payload["images"] = [encoded]
+            self.logger.info(
+                "Ollama request: model=%s prompt=%s image_size=%sx%s",
+                model,
+                self._truncate(prompt),
+                size[0],
+                size[1],
+            )
+        else:
+            self.logger.info("Ollama request: model=%s prompt=%s", model, self._truncate(prompt))
         response = requests.post(
             f"{self.base_url}/api/generate",
             data=json.dumps(payload),
             headers={"Content-Type": "application/json"},
-            timeout=60,
+            timeout=90,
         )
         response.raise_for_status()
         result = response.json()
-        self.logger.info("Ollama response: %s", result)
+        self.logger.info("Ollama response: %s", self._truncate(json.dumps(result, ensure_ascii=False)))
         return OllamaResponse(result)
+
+    def _encode_image(
+        self,
+        image: Image.Image,
+        image_quality: int,
+        max_image_side: int | None,
+    ) -> tuple[str, tuple[int, int]]:
+        resized = image.convert("RGB")
+        if max_image_side:
+            resized.thumbnail((max_image_side, max_image_side))
+        buffer = io.BytesIO()
+        resized.save(buffer, format="JPEG", quality=image_quality)
+        encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+        return encoded, (resized.width, resized.height)
+
+    @staticmethod
+    def _truncate(text: str, limit: int = 400) -> str:
+        if len(text) <= limit:
+            return text
+        return text[:limit] + "…"
