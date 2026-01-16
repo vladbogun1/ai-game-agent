@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+import re
 from dataclasses import dataclass
 from threading import Event
 
@@ -81,12 +82,42 @@ class GameAgent:
         )
 
     @staticmethod
+    def _extract_payload(response_text: str) -> object | None:
+        cleaned = GameAgent._strip_code_fence(response_text)
+        try:
+            return json.loads(cleaned)
+        except ValueError:
+            pass
+        decoder = json.JSONDecoder()
+        for start in range(len(cleaned)):
+            if cleaned[start] not in "[{":
+                continue
+            try:
+                payload, _ = decoder.raw_decode(cleaned[start:])
+                return payload
+            except ValueError:
+                continue
+        return None
+
+    @staticmethod
+    def _strip_code_fence(response_text: str) -> str:
+        text = response_text.strip()
+        if "```" not in text:
+            return text
+        pattern = re.compile(r"```(?:json)?\s*(\[[\s\S]*?\]|\{[\s\S]*?\})\s*```", re.IGNORECASE)
+        match = pattern.search(text)
+        if match:
+            return match.group(1).strip()
+        return text
+
+
+    @staticmethod
     def parse_actions(response_text: str, width: int, height: int) -> list[Action]:
         actions: list[Action] = []
         if not response_text:
             return actions
         try:
-            payload = json.loads(response_text)
+            payload = GameAgent._extract_payload(response_text)
         except ValueError:
             return actions
         if not isinstance(payload, list):
