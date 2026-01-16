@@ -75,6 +75,12 @@ class ActionExecutor:
                 if self._too_frequent(key_id, self.key_min_interval_s):
                     continue
                 self._keyboard.release(action.key)
+            elif action.type == "tap_key" and action.key is not None:
+                key_id = f"tap_key:{action.key}"
+                if self._too_frequent(key_id, self.key_min_interval_s):
+                    continue
+                self._keyboard.press(action.key)
+                self._keyboard.release(action.key)
             elif action.type == "wait" and action.duration_s:
                 time.sleep(action.duration_s)
 

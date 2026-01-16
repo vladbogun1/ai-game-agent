@@ -2,6 +2,7 @@ import base64
 import io
 import json
 import logging
+import time
 from dataclasses import dataclass
 
 import requests
@@ -11,6 +12,8 @@ from PIL import Image
 @dataclass(frozen=True)
 class OllamaResponse:
     raw: dict
+    encode_ms: float | None = None
+    request_ms: float | None = None
 
     @property
     def text(self) -> str:
@@ -50,8 +53,11 @@ class OllamaClient:
             "prompt": prompt,
             "stream": False,
         }
+        encode_ms: float | None = None
         if image is not None:
+            encode_start = time.monotonic()
             encoded, size = self._encode_image(image, image_quality, max_image_side)
+            encode_ms = (time.monotonic() - encode_start) * 1000
             payload["images"] = [encoded]
             self.logger.info(
                 "Ollama request: model=%s prompt=%s image_size=%sx%s",
@@ -62,6 +68,7 @@ class OllamaClient:
             )
         else:
             self.logger.info("Ollama request: model=%s prompt=%s", model, self._truncate(prompt))
+        request_start = time.monotonic()
         try:
             response = requests.post(
                 f"{self.base_url}/api/generate",
@@ -74,8 +81,9 @@ class OllamaClient:
             raise
         response.raise_for_status()
         result = response.json()
+        request_ms = (time.monotonic() - request_start) * 1000
         self.logger.info("Ollama response: %s", self._truncate(json.dumps(result, ensure_ascii=False)))
-        return OllamaResponse(result)
+        return OllamaResponse(result, encode_ms=encode_ms, request_ms=request_ms)
 
     def _encode_image(
         self,

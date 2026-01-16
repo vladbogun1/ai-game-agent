@@ -53,6 +53,21 @@ class VisionAnalyzer:
         mean = tuple(int(value) for value in stats.mean[:3])
         return FrameSummary(width=image.width, height=image.height, mean_rgb=mean)
 
+    def signature(self, image: Image.Image, hash_size: int = 8) -> int:
+        grayscale = image.convert("L").resize((hash_size + 1, hash_size), Image.BILINEAR)
+        pixels = list(grayscale.getdata())
+        signature = 0
+        bit_index = 0
+        for row in range(hash_size):
+            row_start = row * (hash_size + 1)
+            for col in range(hash_size):
+                left = pixels[row_start + col]
+                right = pixels[row_start + col + 1]
+                if left > right:
+                    signature |= 1 << bit_index
+                bit_index += 1
+        return signature
+
     def monitor_region(self) -> dict[str, int]:
         sct = self._get_sct()
         monitor = sct.monitors[self.monitor_index]

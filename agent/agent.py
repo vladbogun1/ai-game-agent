@@ -56,25 +56,26 @@ class GameAgent:
             key_min_interval_s=config.key_min_interval_s,
         )
         self.stop_event = stop_event or Event()
+        self._last_llm_ts = 0.0
+        self._last_frame_sig: int | None = None
+        self._cache: dict[int, tuple[float, list[Action]]] = {}
+        self._cooldown_until_ts = 0.0
+        self._empty_response_count = 0
 
     def build_prompt(self, frame_summary: str) -> str:
         return (
-            "You are a vision-based game automation agent. You receive a screenshot image.\n"
-            "You must output ONLY a JSON array of actions (max 3). No markdown, no text.\n\n"
-            "Allowed action objects:\n"
+            "You are a vision-based game automation agent.\n"
+            "Return ONLY a JSON array of actions (max 3). No markdown.\n"
+            "If unsure, return [].\n\n"
+            "Actions:\n"
             '- {"type":"move_mouse","x":int,"y":int}\n'
             '- {"type":"click_left"}\n'
             '- {"type":"click_right"}\n'
+            '- {"type":"tap_key","key":string}\n'
             '- {"type":"press_key","key":string}\n'
             '- {"type":"release_key","key":string}\n'
             '- {"type":"wait","duration_s":float}\n\n'
-            "Rules:\n"
-            "- Base decisions strictly on what is visible in the screenshot + Context/Rules.\n"
-            "- Think about observations internally, but DO NOT output them.\n"
-            "- If you are not confident, output [].\n"
-            "- Do not click random UI. Only act when target is clearly visible or rule says safe.\n"
-            "- Coordinates are in the screenshot space (width x height), top-left is (0,0).\n"
-            "- NEVER output anything except the JSON array.\n\n"
+            "Use only what is visible + Context/Rules. Coordinates are screenshot pixels.\n\n"
             f"Task: {self.state.task}\n"
             f"Context: {self.state.context}\n"
             f"Rules: {self.state.rules}\n\n"
@@ -122,7 +123,15 @@ class GameAgent:
             return actions
         if not isinstance(payload, list):
             return actions
-        allowed = {"move_mouse", "click_left", "click_right", "press_key", "release_key", "wait"}
+        allowed = {
+            "move_mouse",
+            "click_left",
+            "click_right",
+            "tap_key",
+            "press_key",
+            "release_key",
+            "wait",
+        }
         for item in payload:
             if not isinstance(item, dict):
                 continue
@@ -140,7 +149,7 @@ class GameAgent:
                 if len(actions) >= 3:
                     break
                 continue
-            if action_type in {"press_key", "release_key"}:
+            if action_type in {"press_key", "release_key", "tap_key"}:
                 key = item.get("key")
                 if not isinstance(key, str) or not key.strip():
                     continue
@@ -168,7 +177,39 @@ class GameAgent:
     def run(self) -> None:
         while not self.stop_event.is_set():
             try:
+                loop_start = time.monotonic()
+                capture_start = time.monotonic()
                 image = self.vision.capture()
+                capture_ms = (time.monotonic() - capture_start) * 1000
+
+                sig_start = time.monotonic()
+                frame_sig = self.vision.signature(image)
+                sig_ms = (time.monotonic() - sig_start) * 1000
+
+                now = time.monotonic()
+                cached_actions = self._cached_actions(frame_sig, now)
+                if cached_actions is not None:
+                    exec_start = time.monotonic()
+                    self.executor.execute(cached_actions)
+                    exec_ms = (time.monotonic() - exec_start) * 1000
+                    self._apply_cooldown(cached_actions, now)
+                    self.logger.info(
+                        "Cache hit. timings capture=%.1fms sig=%.1fms exec=%.1fms",
+                        capture_ms,
+                        sig_ms,
+                        exec_ms,
+                    )
+                    self._sleep_remaining(loop_start)
+                    continue
+
+                if not self.should_call_llm(now, frame_sig):
+                    self.logger.debug(
+                        "Skipping LLM. cooldown=%.2fs",
+                        max(0.0, self._cooldown_until_ts - now),
+                    )
+                    self._sleep_remaining(loop_start)
+                    continue
+
                 summary = self.vision.summarize(image)
                 prompt = self.build_prompt(summary.to_prompt())
                 self.logger.info(
@@ -179,14 +220,37 @@ class GameAgent:
                     prompt,
                     image=image,
                     image_quality=self.config.image_jpeg_quality,
-                    max_image_side=None,
+                    max_image_side=self.config.max_image_side,
                 )
+                llm_ms = response.request_ms or 0.0
+                encode_ms = response.encode_ms or 0.0
                 raw_text = response.text
                 self.logger.info("Ollama raw response: %s", self._truncate(raw_text))
+                parse_start = time.monotonic()
                 actions = self.parse_actions(raw_text, image.width, image.height)
+                parse_ms = (time.monotonic() - parse_start) * 1000
                 self.logger.info("Validated actions: %s", actions)
+                exec_start = time.monotonic()
                 self.executor.execute(actions)
-                time.sleep(self.config.loop_delay_s)
+                exec_ms = (time.monotonic() - exec_start) * 1000
+                self._cache[frame_sig] = (now, actions)
+                self._last_llm_ts = now
+                self._last_frame_sig = frame_sig
+                if actions:
+                    self._empty_response_count = 0
+                    self._apply_cooldown(actions, now)
+                else:
+                    self._empty_response_count += 1
+                self.logger.info(
+                    "timings capture=%.1fms sig=%.1fms encode=%.1fms llm=%.1fms parse=%.1fms exec=%.1fms",
+                    capture_ms,
+                    sig_ms,
+                    encode_ms,
+                    llm_ms,
+                    parse_ms,
+                    exec_ms,
+                )
+                self._sleep_remaining(loop_start)
             except Exception:
                 self.logger.exception("Agent loop error")
                 time.sleep(1.0)
@@ -208,3 +272,58 @@ class GameAgent:
             return width, height
         scale = max_image_side / max_side
         return int(round(width * scale)), int(round(height * scale))
+
+    def should_call_llm(self, now: float, frame_sig: int) -> bool:
+        if now < self._cooldown_until_ts:
+            return False
+        if self._last_frame_sig is None:
+            return True
+        if now - self._last_llm_ts < self.config.llm_interval_s:
+            return self._frame_changed_significantly(frame_sig)
+        if self._empty_response_count >= 3 and self._frame_changed_significantly(frame_sig):
+            return True
+        return self._frame_changed_significantly(frame_sig)
+
+    def _frame_changed_significantly(self, frame_sig: int) -> bool:
+        if self._last_frame_sig is None:
+            return True
+        distance = (frame_sig ^ self._last_frame_sig).bit_count()
+        return distance >= self.config.frame_change_threshold
+
+    def _cached_actions(self, frame_sig: int, now: float) -> list[Action] | None:
+        self._prune_cache(now)
+        entry = self._cache.get(frame_sig)
+        if entry:
+            cached_ts, actions = entry
+            if now - cached_ts <= self.config.cache_ttl_s:
+                return actions
+        for sig, (cached_ts, actions) in self._cache.items():
+            if now - cached_ts > self.config.cache_ttl_s:
+                continue
+            if (frame_sig ^ sig).bit_count() <= self.config.frame_change_threshold:
+                return actions
+        return None
+
+    def _prune_cache(self, now: float) -> None:
+        expired = [
+            sig
+            for sig, (cached_ts, _) in self._cache.items()
+            if now - cached_ts > self.config.cache_ttl_s
+        ]
+        for sig in expired:
+            self._cache.pop(sig, None)
+
+    def _apply_cooldown(self, actions: list[Action], now: float) -> None:
+        cooldown = 0.0
+        if actions:
+            cooldown = self.config.cooldown_default_s
+        if any(action.type in {"tap_key", "press_key", "release_key"} for action in actions):
+            cooldown = max(cooldown, self.config.cooldown_key_tap_s)
+        if cooldown > 0:
+            self._cooldown_until_ts = max(self._cooldown_until_ts, now + cooldown)
+
+    def _sleep_remaining(self, loop_start: float) -> None:
+        elapsed = time.monotonic() - loop_start
+        remaining = self.config.loop_delay_s - elapsed
+        if remaining > 0:
+            time.sleep(remaining)

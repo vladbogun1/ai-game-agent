@@ -104,23 +104,38 @@ class AgentUI:
 
         ttk.Label(form_frame, text="Capture width").grid(row=6, column=0, sticky=tk.W)
         self.capture_width_entry = ttk.Entry(form_frame, width=10)
-        self.capture_width_entry.insert(0, "640")
+        self.capture_width_entry.insert(0, "384")
         self.capture_width_entry.grid(row=6, column=1, sticky=tk.W, padx=8)
 
         ttk.Label(form_frame, text="Capture height").grid(row=7, column=0, sticky=tk.W)
         self.capture_height_entry = ttk.Entry(form_frame, width=10)
-        self.capture_height_entry.insert(0, "360")
+        self.capture_height_entry.insert(0, "216")
         self.capture_height_entry.grid(row=7, column=1, sticky=tk.W, padx=8)
+
+        ttk.Label(form_frame, text="LLM interval (s)").grid(row=8, column=0, sticky=tk.W)
+        self.llm_interval_entry = ttk.Entry(form_frame, width=10)
+        self.llm_interval_entry.insert(0, "1.5")
+        self.llm_interval_entry.grid(row=8, column=1, sticky=tk.W, padx=8)
+
+        ttk.Label(form_frame, text="Cache TTL (s)").grid(row=9, column=0, sticky=tk.W)
+        self.cache_ttl_entry = ttk.Entry(form_frame, width=10)
+        self.cache_ttl_entry.insert(0, "3.0")
+        self.cache_ttl_entry.grid(row=9, column=1, sticky=tk.W, padx=8)
+
+        ttk.Label(form_frame, text="JPEG quality").grid(row=10, column=0, sticky=tk.W)
+        self.jpeg_quality_entry = ttk.Entry(form_frame, width=10)
+        self.jpeg_quality_entry.insert(0, "70")
+        self.jpeg_quality_entry.grid(row=10, column=1, sticky=tk.W, padx=8)
 
         self.save_debug_frames_var = tk.BooleanVar(value=False)
         self.save_debug_frames_check = ttk.Checkbutton(
             form_frame, text="Save debug frames", variable=self.save_debug_frames_var
         )
-        self.save_debug_frames_check.grid(row=8, column=1, sticky=tk.W, padx=8, pady=(4, 0))
+        self.save_debug_frames_check.grid(row=11, column=1, sticky=tk.W, padx=8, pady=(4, 0))
 
         self.dry_run_var = tk.BooleanVar(value=True)
         self.dry_run_check = ttk.Checkbutton(form_frame, text="Dry run", variable=self.dry_run_var)
-        self.dry_run_check.grid(row=9, column=1, sticky=tk.W, padx=8, pady=(4, 0))
+        self.dry_run_check.grid(row=12, column=1, sticky=tk.W, padx=8, pady=(4, 0))
 
         button_frame = ttk.Frame(self.root, padding=12)
         button_frame.pack(fill=tk.X)
@@ -133,6 +148,8 @@ class AgentUI:
         self.copy_button.pack(side=tk.LEFT, padx=8)
         self.paste_button = ttk.Button(button_frame, text="Paste JSON", command=self.paste_params_json)
         self.paste_button.pack(side=tk.LEFT)
+        self.copy_logs_button = ttk.Button(button_frame, text="Copy Logs", command=self.copy_logs)
+        self.copy_logs_button.pack(side=tk.LEFT, padx=8)
 
         self.log_text = tk.Text(self.root, height=20, state=tk.DISABLED)
         self.log_text.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
@@ -155,8 +172,11 @@ class AgentUI:
             model=self.model_entry.get().strip(),
             ollama_url=self.ollama_url_entry.get().strip(),
             screen_monitor=monitor_index,
-            capture_width=self._parse_int(self.capture_width_entry.get(), 640),
-            capture_height=self._parse_int(self.capture_height_entry.get(), 360),
+            capture_width=self._parse_int(self.capture_width_entry.get(), 384),
+            capture_height=self._parse_int(self.capture_height_entry.get(), 216),
+            llm_interval_s=self._parse_float(self.llm_interval_entry.get(), 1.5),
+            cache_ttl_s=self._parse_float(self.cache_ttl_entry.get(), 3.0),
+            image_jpeg_quality=self._parse_int(self.jpeg_quality_entry.get(), 70),
             dry_run=self.dry_run_var.get(),
             save_debug_frames=self.save_debug_frames_var.get(),
         )
@@ -188,8 +208,11 @@ class AgentUI:
             "task": self.task_entry.get().strip(),
             "context": self.context_entry.get().strip(),
             "rules": self.rules_entry.get().strip(),
-            "capture_width": self._parse_int(self.capture_width_entry.get(), 640),
-            "capture_height": self._parse_int(self.capture_height_entry.get(), 360),
+            "capture_width": self._parse_int(self.capture_width_entry.get(), 384),
+            "capture_height": self._parse_int(self.capture_height_entry.get(), 216),
+            "llm_interval_s": self._parse_float(self.llm_interval_entry.get(), 1.5),
+            "cache_ttl_s": self._parse_float(self.cache_ttl_entry.get(), 3.0),
+            "image_jpeg_quality": self._parse_int(self.jpeg_quality_entry.get(), 70),
             "dry_run": self.dry_run_var.get(),
             "save_debug_frames": self.save_debug_frames_var.get(),
         }
@@ -220,6 +243,15 @@ class AgentUI:
         if "capture_height" in payload:
             self.capture_height_entry.delete(0, tk.END)
             self.capture_height_entry.insert(0, str(payload["capture_height"]))
+        if "llm_interval_s" in payload:
+            self.llm_interval_entry.delete(0, tk.END)
+            self.llm_interval_entry.insert(0, str(payload["llm_interval_s"]))
+        if "cache_ttl_s" in payload:
+            self.cache_ttl_entry.delete(0, tk.END)
+            self.cache_ttl_entry.insert(0, str(payload["cache_ttl_s"]))
+        if "image_jpeg_quality" in payload:
+            self.jpeg_quality_entry.delete(0, tk.END)
+            self.jpeg_quality_entry.insert(0, str(payload["image_jpeg_quality"]))
         monitor_label = payload.get("monitor_label")
         monitor_index = payload.get("monitor_index")
         if monitor_label:
@@ -255,10 +287,26 @@ class AgentUI:
         self._apply_params(payload)
         self.logger.info("Parameters loaded from clipboard JSON")
 
+    def copy_logs(self) -> None:
+        content = self.log_text.get("1.0", tk.END).strip()
+        if not content:
+            self.logger.info("No logs to copy")
+            return
+        self.root.clipboard_clear()
+        self.root.clipboard_append(content)
+        self.logger.info("Logs copied to clipboard")
+
     @staticmethod
     def _parse_int(value: str, fallback: int) -> int:
         try:
             return int(value)
+        except ValueError:
+            return fallback
+
+    @staticmethod
+    def _parse_float(value: str, fallback: float) -> float:
+        try:
+            return float(value)
         except ValueError:
             return fallback
 
