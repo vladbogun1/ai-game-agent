@@ -62,12 +62,16 @@ class OllamaClient:
             )
         else:
             self.logger.info("Ollama request: model=%s prompt=%s", model, self._truncate(prompt))
-        response = requests.post(
-            f"{self.base_url}/api/generate",
-            data=json.dumps(payload),
-            headers={"Content-Type": "application/json"},
-            timeout=90,
-        )
+        try:
+            response = requests.post(
+                f"{self.base_url}/api/generate",
+                data=json.dumps(payload),
+                headers={"Content-Type": "application/json"},
+                timeout=90,
+            )
+        except requests.RequestException as exc:
+            self.logger.exception("Ollama request failed: %s", exc)
+            raise
         response.raise_for_status()
         result = response.json()
         self.logger.info("Ollama response: %s", self._truncate(json.dumps(result, ensure_ascii=False)))

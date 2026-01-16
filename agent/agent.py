@@ -136,25 +136,29 @@ class GameAgent:
 
     def run(self) -> None:
         while not self.stop_event.is_set():
-            image = self.vision.capture()
-            summary = self.vision.summarize(image)
-            prompt = self.build_prompt(summary.to_prompt())
-            self.logger.info(
-                "Sending frame to Ollama: %sx%s", image.width, image.height
-            )
-            response = self.ollama.generate(
-                self.config.model,
-                prompt,
-                image=image,
-                image_quality=self.config.image_jpeg_quality,
-                max_image_side=None,
-            )
-            raw_text = response.text
-            self.logger.info("Ollama raw response: %s", self._truncate(raw_text))
-            actions = self.parse_actions(raw_text, image.width, image.height)
-            self.logger.info("Validated actions: %s", actions)
-            self.executor.execute(actions)
-            time.sleep(self.config.loop_delay_s)
+            try:
+                image = self.vision.capture()
+                summary = self.vision.summarize(image)
+                prompt = self.build_prompt(summary.to_prompt())
+                self.logger.info(
+                    "Sending frame to Ollama: %sx%s", image.width, image.height
+                )
+                response = self.ollama.generate(
+                    self.config.model,
+                    prompt,
+                    image=image,
+                    image_quality=self.config.image_jpeg_quality,
+                    max_image_side=None,
+                )
+                raw_text = response.text
+                self.logger.info("Ollama raw response: %s", self._truncate(raw_text))
+                actions = self.parse_actions(raw_text, image.width, image.height)
+                self.logger.info("Validated actions: %s", actions)
+                self.executor.execute(actions)
+                time.sleep(self.config.loop_delay_s)
+            except Exception:
+                self.logger.exception("Agent loop error")
+                time.sleep(1.0)
 
     @staticmethod
     def _truncate(text: str, limit: int = 400) -> str:
