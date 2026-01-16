@@ -15,12 +15,12 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   100
 );
-camera.position.set(0, 5.2, 12.5);
+camera.position.set(0, 6.5, 16.5);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-controls.minDistance = 8;
-controls.maxDistance = 18;
+controls.minDistance = 6;
+controls.maxDistance = 30;
 controls.target.set(0, 1, 0);
 
 const ambient = new THREE.AmbientLight("#ffffff", 0.7);
@@ -68,6 +68,8 @@ const textureContext = textureCanvas.getContext("2d");
 const texture = new THREE.CanvasTexture(textureCanvas);
 texture.colorSpace = THREE.SRGBColorSpace;
 texture.anisotropy = 8;
+texture.wrapS = THREE.ClampToEdgeWrapping;
+texture.wrapT = THREE.ClampToEdgeWrapping;
 
 function setCanvasDefault() {
   textureContext.fillStyle = "#1f1f27";
@@ -78,7 +80,7 @@ setCanvasDefault();
 
 const topMaterial = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.35 });
 const sideMaterial = new THREE.MeshStandardMaterial({ color: "#26262f", roughness: 0.5 });
-const keyMaterials = [sideMaterial, sideMaterial, sideMaterial, sideMaterial, topMaterial, sideMaterial];
+const keyMaterials = [sideMaterial, sideMaterial, topMaterial, sideMaterial, sideMaterial, sideMaterial];
 
 function createKeycap(width, height, x, z) {
   const geometry = new THREE.BoxGeometry(width, KEY_HEIGHT, height);
@@ -205,7 +207,7 @@ clearButton.addEventListener("click", () => {
 const resetView = document.getElementById("resetView");
 resetView.addEventListener("click", () => {
   controls.reset();
-  camera.position.set(0, 5.2, 12.5);
+  camera.position.set(0, 6.5, 16.5);
   controls.target.set(0, 1, 0);
 });
 
