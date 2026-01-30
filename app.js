@@ -46,24 +46,6 @@ scene.add(keyboardGroup);
 const layout = [
   [
     { label: "Esc", w: 1 },
-    { label: "F1", w: 1 },
-    { label: "F2", w: 1 },
-    { label: "F3", w: 1 },
-    { label: "F4", w: 1 },
-    { label: "F5", w: 1 },
-    { label: "F6", w: 1 },
-    { label: "F7", w: 1 },
-    { label: "F8", w: 1 },
-    { label: "F9", w: 1 },
-    { label: "F10", w: 1 },
-    { label: "F11", w: 1 },
-    { label: "F12", w: 1 },
-    { label: "Mode", w: 1 },
-    { label: "Prt\nSc", w: 1 },
-    { label: "Pause", w: 1 },
-  ],
-  [
-    { label: "`\n~", w: 1 },
     { label: "1\n!", w: 1 },
     { label: "2\n@", w: 1 },
     { label: "3\n#", w: 1 },
@@ -77,8 +59,7 @@ const layout = [
     { label: "-\n_", w: 1 },
     { label: "=\n+", w: 1 },
     { label: "Backspace", w: 2 },
-    { label: "Ins", w: 1 },
-    { label: "Pg\nUp", w: 1 },
+    { label: "", w: 1 },
   ],
   [
     { label: "Tab", w: 1.5 },
@@ -95,11 +76,10 @@ const layout = [
     { label: "[", w: 1 },
     { label: "]", w: 1 },
     { label: "\\", w: 1.5 },
-    { label: "Del", w: 1 },
-    { label: "Pg\nDn", w: 1 },
+    { label: "", w: 1 },
   ],
   [
-    { label: "Caps\nLock", w: 1.75 },
+    { label: "Caps", w: 1.75 },
     { label: "A", w: 1 },
     { label: "S", w: 1 },
     { label: "D", w: 1 },
@@ -112,7 +92,6 @@ const layout = [
     { label: ";\n:", w: 1 },
     { label: "'\n\"", w: 1 },
     { label: "Enter", w: 2.25 },
-    { label: "", w: 1 },
     { label: "", w: 1 },
   ],
   [
@@ -128,7 +107,6 @@ const layout = [
     { label: ".\n>", w: 1 },
     { label: "/\n?", w: 1 },
     { label: "Shift", w: 2.75 },
-    { label: "↑", w: 1 },
     { label: "", w: 1 },
   ],
   [
@@ -137,11 +115,8 @@ const layout = [
     { label: "Alt", w: 1.25 },
     { label: "", w: 6.25 },
     { label: "Alt", w: 1.25 },
-    { label: "Fn", w: 1.25 },
     { label: "Ctrl", w: 1.25 },
-    { label: "←", w: 1 },
-    { label: "↓", w: 1 },
-    { label: "→", w: 1 },
+    { label: "Fn", w: 1.25 },
   ],
 ];
 
@@ -192,23 +167,22 @@ function createLabelSprite(text, width, height) {
   const context = canvas.getContext("2d");
   context.clearRect(0, 0, canvas.width, canvas.height);
   context.fillStyle = "rgba(255, 255, 255, 0.85)";
-  context.font = "500 24px Inter, sans-serif";
-  context.textAlign = "left";
-  context.textBaseline = "top";
+  context.font = "500 22px Inter, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
 
   const lines = text.split("\n");
-  const lineHeight = 26;
-  const paddingX = 36;
-  const paddingY = 32;
+  const lineHeight = 24;
+  const startY = canvas.height / 2 - ((lines.length - 1) * lineHeight) / 2;
   lines.forEach((line, index) => {
-    context.fillText(line, paddingX, paddingY + index * lineHeight);
+    context.fillText(line, canvas.width / 2, startY + index * lineHeight);
   });
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
   const sprite = new THREE.Sprite(material);
-  sprite.scale.set(width * 0.7, height * 0.7, 1);
+  sprite.scale.set(width * 0.6, height * 0.6, 1);
   return sprite;
 }
 
@@ -238,7 +212,7 @@ function createKeycap(width, height, x, z, label) {
 
   const labelSprite = createLabelSprite(label, width, height);
   if (labelSprite) {
-    labelSprite.position.set(mesh.position.x - width * 0.2, KEY_HEIGHT + 0.02, mesh.position.z - height * 0.2);
+    labelSprite.position.set(mesh.position.x, KEY_HEIGHT + 0.02, mesh.position.z);
     keyboardGroup.add(labelSprite);
   }
 }
